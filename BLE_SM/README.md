@@ -10,6 +10,8 @@ Upon success it will disconnect and start advertising to demonstrate usage as a 
 
 ## Requirements
 
+Currently ST boards offer a too limited support for Security Manager for this example to work correctly.
+
 The sample application can be seen on any BLE scanner on a smartphone. If you don't have a scanner on your phone, please install :
 
 - [nRF Master Control Panel](https://play.google.com/store/apps/details?id=no.nordicsemi.android.mcp) for Android.
@@ -25,5 +27,3 @@ Hardware requirements are in the [main readme](https://github.com/ARMmbed/mbed-o
 ## Building instructions
 
 Building instructions for all samples are in the [main readme](https://github.com/ARMmbed/mbed-os-example-ble/blob/master/README.md).
-
-Note: example currently doesn't use ST provided stack and instead uses a Cordio port for the ST.

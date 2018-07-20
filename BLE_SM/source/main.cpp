@@ -19,6 +19,20 @@
 #include "ble/BLE.h"
 #include "SecurityManager.h"
 
+#if MBED_CONF_APP_FILESYSTEM_SUPPORT
+#include "LittleFileSystem.h"
+#include "FATFileSystem.h"
+#include "HeapBlockDevice.h"
+#include "SDBlockDevice.h"
+#include "SlicingBlockDevice.h"
+
+#define SD_SPI_MOSI p28
+#define SD_SPI_MISO p3
+#define SD_SPI_SCLK p4
+#define SD_SPI_CS   p29
+
+#endif //MBED_CONF_APP_FILESYSTEM_SUPPORT
+
 /** This example demonstrates all the basic setup required
  *  for pairing and setting up link security both as a central and peripheral
  *
@@ -124,10 +138,10 @@ public:
         }
 
         /* disconnect in 500 ms */
-        _event_queue.call_in(
+	/* _event_queue.call_in(
             500, &_ble.gap(),
             &Gap::disconnect, _handle, Gap::REMOTE_USER_TERMINATED_CONNECTION
-        );
+	    );*/
     }
 
     /** Inform the application of change in encryption status. This will be
@@ -159,9 +173,19 @@ private:
             return;
         }
 
+        /* This path will be used to store bonding information but will fallback
+         * to storing in memory if file access fails (for example due to lack of a filesystem) */
+        const char* db_path = "/fs/bt_sec_db";
         /* If the security manager is required this needs to be called before any
          * calls to the Security manager happen. */
-        error = _ble.securityManager().init();
+        error = _ble.securityManager().init(
+            true,
+            false,
+            SecurityManager::IO_CAPS_NONE,
+            NULL,
+            false,
+            db_path
+        );
 
         if (error) {
             printf("Error during init %d\r\n", error);
@@ -195,8 +219,9 @@ private:
      *  in our case it ends the demonstration. */
     void on_disconnect(const Gap::DisconnectionCallbackParams_t *event)
     {
-        printf("Disconnected - demonstration ended \r\n");
-        _event_queue.break_dispatch();
+        printf("Disconnected - starting advertising\r\n");
+	 _ble.gap().startAdvertising();
+        //_event_queue.break_dispatch();
     };
 
     /** End demonstration unexpectedly. Called if timeout is reached during advertising,
@@ -396,21 +421,77 @@ public:
     };
 };
 
+
+#if MBED_CONF_APP_FILESYSTEM_SUPPORT
+bool create_filesystem()
+{
+
+    /* replace this with any physical block device your board supports (like an SD card) */
+    static SDBlockDevice bd(SD_SPI_MOSI, SD_SPI_MISO, SD_SPI_SCLK, SD_SPI_CS);
+    
+
+    // static LittleFileSystem fs("fs");
+    static FATFileSystem fs("fs");
+
+    int err = bd.init();
+
+    if (err) {
+        return false;
+    }
+
+    // err = bd.erase(0, bd.size());
+
+    /* if (err) {
+        return false;
+	}*/
+
+    err = fs.mount(&bd);
+
+    if (err) {
+        /* Reformat if we can't mount the filesystem */
+        printf("No filesystem found, formatting...\r\n");
+
+        err = fs.reformat(&bd);
+
+        if (err) {
+            return false;
+        }
+    }
+
+    return true;
+}
+#endif //MBED_CONF_APP_FILESYSTEM_SUPPORT
+
 int main()
 {
+  printf("Persistent bonding example begin\n");
     BLE& ble = BLE::Instance();
     events::EventQueue queue;
 
-    {
-        printf("\r\n PERIPHERAL \r\n\r\n");
-        SMDevicePeripheral peripheral(ble, queue, peer_address);
-        peripheral.run();
+#if MBED_CONF_APP_FILESYSTEM_SUPPORT
+    /* if filesystem creation fails or there is no filesystem the security manager
+     * will fallback to storing the security database in memory */
+    if (!create_filesystem()) {
+        printf("Filesystem creation failed, will use memory storage\r\n");
     }
+    else
+      {
+	printf("Filesystem creation success!\n");
+      }
+#endif
 
-    {
-        printf("\r\n CENTRAL \r\n\r\n");
-        SMDeviceCentral central(ble, queue, peer_address);
-        central.run();
+    while(1) {
+        {
+            printf("\r\n PERIPHERAL \r\n\r\n");
+            SMDevicePeripheral peripheral(ble, queue, peer_address);
+            peripheral.run();
+        }
+
+        {
+            printf("\r\n CENTRAL \r\n\r\n");
+            SMDeviceCentral central(ble, queue, peer_address);
+            central.run();
+        }
     }
 
     return 0;
